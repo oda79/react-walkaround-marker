@@ -2,6 +2,14 @@
   "name": "@oda79/react-walkaround-marker",
   "version": "0.1.0",
   "description": "A lightweight React canvas component for drawing and managing marks over vehicle walkaround images.",
+  "keywords": [
+    "react",
+    "canvas",
+    "annotation",
+    "walkaround inspection",
+    "vehicle-inspection",
+    "damage-marker"
+  ],
   "license": "MIT",
   "author": "oda79",
   "repository": {

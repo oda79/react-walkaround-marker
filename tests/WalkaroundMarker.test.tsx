@@ -30,6 +30,51 @@ function ControlledMarker({ onChange }: { onChange: (data: WalkaroundData) => vo
 }
 
 describe("WalkaroundMarker", () => {
+  it("provides an optional accessible toolbar with an uncontrolled Draw and Remove mode", () => {
+    const { getByRole, queryByRole } = render(<WalkaroundMarker src="vehicle.png" value={null} onChange={vi.fn()} showToolbar />);
+
+    const draw = getByRole("button", { name: "Draw marks" });
+    const remove = getByRole("button", { name: "Remove marks" });
+    expect(draw.getAttribute("aria-pressed")).toBe("true");
+    expect(remove.getAttribute("aria-pressed")).toBe("false");
+    expect(queryByRole("button", { name: /view/i })).toBeNull();
+    expect((getByRole("button", { name: "Undo last change" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((getByRole("button", { name: "Redo last change" }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(remove);
+    expect(draw.getAttribute("aria-pressed")).toBe("false");
+    expect(remove.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("uses onModeChange without changing a controlled toolbar mode", () => {
+    const onModeChange = vi.fn();
+    const { container } = render(<WalkaroundMarker src="vehicle.png" value={null} onChange={vi.fn()} mode="draw" onModeChange={onModeChange} showToolbar />);
+    const button = (name: string) => Array.from(container.querySelectorAll("button")).find((element) => element.getAttribute("aria-label") === name)!;
+
+    fireEvent.click(button("Remove marks"));
+    expect(onModeChange).toHaveBeenCalledWith("delete");
+    expect(button("Draw marks").getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("disables toolbar history immediately after a parent replaces the document", () => {
+    const onChange = vi.fn();
+    const initial: WalkaroundData = {
+      version: 1, imageWidth: 1000, imageHeight: 500,
+      marks: [{ id: "original", color: "#f00", width: 6, points: [{ x: 100, y: 100 }] }]
+    };
+    const rendered = render(<WalkaroundMarker src="vehicle.png" value={initial} onChange={onChange} mode="delete" showToolbar onDeleteRequest={(_mark, confirm) => confirm()} />);
+    pointer(loadImage(rendered.container), "pointerdown", { pointerId: 1, clientX: 60, clientY: 70 });
+    const emitted = onChange.mock.calls[0][0] as WalkaroundData;
+    rendered.rerender(<WalkaroundMarker src="vehicle.png" value={emitted} onChange={onChange} mode="delete" showToolbar onDeleteRequest={(_mark, confirm) => confirm()} />);
+
+    const undo = () => rendered.container.querySelector('button[aria-label="Undo last change"]') as HTMLButtonElement;
+    expect(undo().disabled).toBe(false);
+    const replacement: WalkaroundData = { ...initial, marks: [{ ...initial.marks[0], id: "replacement" }] };
+    rendered.rerender(<WalkaroundMarker src="vehicle.png" value={replacement} onChange={onChange} mode="delete" showToolbar onDeleteRequest={(_mark, confirm) => confirm()} />);
+
+    expect(undo().disabled).toBe(true);
+  });
+
   it("saves the default red, 10px stroke style", () => {
     const onChange = vi.fn();
     const { container } = render(<WalkaroundMarker src="vehicle.png" value={null} onChange={onChange} />);
@@ -91,10 +136,14 @@ describe("WalkaroundMarker", () => {
 
   it("does not use an emitted mark when the controlled parent rejects it", () => {
     const onChange = vi.fn();
-    const { container } = render(<WalkaroundMarker src="vehicle.png" value={null} onChange={onChange} />);
+    const { container } = render(<WalkaroundMarker src="vehicle.png" value={null} onChange={onChange} showToolbar />);
     const canvas = loadImage(container);
     pointer(canvas, "pointerdown", { pointerId: 1, clientX: 20, clientY: 30 });
     pointer(canvas, "pointerup", { pointerId: 1, clientX: 20, clientY: 30 });
+    const undo = container.querySelector('button[aria-label="Undo last change"]') as HTMLButtonElement;
+    expect(undo.disabled).toBe(true);
+    fireEvent.click(undo);
+    expect(onChange).toHaveBeenCalledTimes(1);
     pointer(canvas, "pointerdown", { pointerId: 2, clientX: 120, clientY: 30 });
     pointer(canvas, "pointerup", { pointerId: 2, clientX: 120, clientY: 30 });
 

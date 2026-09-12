@@ -29,14 +29,11 @@ export default function App() {
     <main className="demo">
       <header><h1>Walkaround marker</h1><p>Draw on the vehicle, switch to Remove to select a mark, then try Undo, Redo, and Clear.</p></header>
       <section className="controls" aria-label="Drawing controls">
-        <label>Mode <select value={mode} onChange={(event) => setMode(event.target.value as WalkaroundMode)}><option value="draw">Draw</option><option value="delete">Remove</option><option value="view">View</option></select></label>
+        <label><input type="checkbox" checked={mode === "view"} onChange={(event) => setMode(event.target.checked ? "view" : "draw")} /> View only</label>
         <label>Color <input type="color" value={color} onChange={(event) => setColor(event.target.value)} /></label>
         <label>Width <input type="number" min="1" value={strokeWidth} onChange={(event) => setStrokeWidth(Number(event.target.value))} /> px</label>
-        <button type="button" onClick={() => markerRef.current?.undo()}>Undo</button>
-        <button type="button" onClick={() => markerRef.current?.redo()}>Redo</button>
-        <button type="button" onClick={() => markerRef.current?.clear()} disabled={!value?.marks.length}>Clear</button>
       </section>
-      <WalkaroundMarker ref={markerRef} src={vehicleImage} value={value} onChange={syncJson} mode={mode} color={color} strokeWidth={strokeWidth}
+      <WalkaroundMarker ref={markerRef} src={vehicleImage} value={value} onChange={syncJson} mode={mode} onModeChange={setMode} color={color} strokeWidth={strokeWidth} showToolbar
         onDeleteRequest={(mark, confirm, cancel) => setPendingDialog({ title: `Remove mark ${mark.id}?`, confirmLabel: "Remove", confirm, cancel })}
         onClearRequest={(confirm, cancel) => setPendingDialog({ title: "Clear all marks?", confirmLabel: "Clear", confirm, cancel })} />
       {pendingDialog && <div className="dialog-backdrop" role="presentation">

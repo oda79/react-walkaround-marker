@@ -17,8 +17,16 @@ export type WalkaroundMarkerProps = {
   value: WalkaroundData | null;
   onChange?: (data: WalkaroundData) => void;
   mode?: WalkaroundMode;
+  /** Called when the built-in toolbar requests a mode change. */
+  onModeChange?: (mode: WalkaroundMode) => void;
   color?: string;
   strokeWidth?: number;
+  /** Shows the package's small, unstyled-by-default editing toolbar. */
+  showToolbar?: boolean;
+  /** Shows Undo and Redo in the built-in toolbar. Defaults to true when the toolbar is shown. */
+  showUndoRedo?: boolean;
+  /** Shows Clear in the built-in toolbar. Defaults to true when the toolbar is shown. */
+  showClear?: boolean;
   className?: string;
   disabled?: boolean;
   /** Called after a mark is selected in delete mode. Calling confirm removes it. */
@@ -30,6 +38,7 @@ export type WalkaroundMarkerProps = {
 type ImageSize = { width: number; height: number };
 type ActiveStroke = WalkaroundMark & { pointerId: number };
 type Snapshot = WalkaroundData | null;
+type PendingEdit = { previous: Snapshot; signature: string };
 
 function createMarkId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
@@ -55,7 +64,8 @@ function emptySnapshot(reference: WalkaroundData | null, imageSize: ImageSize | 
 }
 
 export const WalkaroundMarker = forwardRef<WalkaroundMarkerHandle, WalkaroundMarkerProps>(function WalkaroundMarker({
-  src, value, onChange, mode = "draw", color = "#ef4444", strokeWidth = 10, className, disabled = false,
+  src, value, onChange, mode, onModeChange, color = "#ef4444", strokeWidth = 10,
+  showToolbar = false, showUndoRedo = true, showClear = true, className, disabled = false,
   onDeleteRequest, onClearRequest
 }, ref) {
   const imageRef = useRef<HTMLImageElement>(null);
@@ -63,6 +73,7 @@ export const WalkaroundMarker = forwardRef<WalkaroundMarkerHandle, WalkaroundMar
   const activeStrokesRef = useRef(new Map<number, ActiveStroke>());
   const historyPastRef = useRef<Snapshot[]>([]);
   const historyFutureRef = useRef<Snapshot[]>([]);
+  const pendingEditRef = useRef<PendingEdit | null>(null);
   const valueRef = useRef<Snapshot>(value);
   const expectedEchoRef = useRef<string | null>(null);
   const acceptedSignatureRef = useRef(snapshotSignature(value));
@@ -77,18 +88,26 @@ export const WalkaroundMarker = forwardRef<WalkaroundMarkerHandle, WalkaroundMar
   const [activeStrokes, setActiveStrokes] = useState<WalkaroundMark[]>([]);
   const [selectedMarkId, setSelectedMarkId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [uncontrolledMode, setUncontrolledMode] = useState<WalkaroundMode>("draw");
+  const [, setHistoryRevision] = useState(0);
 
+  const activeMode = mode ?? uncontrolledMode;
+  const modeIsControlled = mode !== undefined;
   const imageIsCurrent = loadedSrc === src;
   const incompatibleDimensions = imageIsCurrent ? dimensionsError(value, imageSize) : null;
   const resolvedColor = color.trim() ? color : "#ef4444";
   const resolvedWidth = Number.isFinite(strokeWidth) && strokeWidth > 0 ? strokeWidth : 10;
-  const canModify = imageIsCurrent && mode !== "view" && !disabled && Boolean(onChange) && !incompatibleDimensions && !loadError;
-  const canDraw = canModify && mode === "draw";
-  const canDelete = canModify && mode === "delete";
+  const canModify = imageIsCurrent && activeMode !== "view" && !disabled && Boolean(onChange) && !incompatibleDimensions && !loadError;
+  const canDraw = canModify && activeMode === "draw";
+  const canDelete = canModify && activeMode === "delete";
   valueRef.current = value;
   onChangeRef.current = onChange;
   editableRef.current = canModify;
   deleteEnabledRef.current = canDelete;
+
+  const refreshHistory = useCallback(() => {
+    setHistoryRevision((revision) => revision + 1);
+  }, []);
 
   // Parent echoes and equivalent cloned values preserve history. Only a content
   // change starts a new document, which also invalidates pending confirmations.
@@ -97,30 +116,47 @@ export const WalkaroundMarker = forwardRef<WalkaroundMarkerHandle, WalkaroundMar
     if (expectedEchoRef.current === signature) {
       expectedEchoRef.current = null;
       acceptedSignatureRef.current = signature;
+      const pendingEdit = pendingEditRef.current;
+      if (pendingEdit?.signature === signature) {
+        historyPastRef.current.push(pendingEdit.previous);
+        historyFutureRef.current = [];
+        refreshHistory();
+      }
+      pendingEditRef.current = null;
       return;
+    }
+    // An unchanged or replacement value that differs from a pending emission
+    // means the controlled parent did not accept that edit.
+    if (expectedEchoRef.current !== null) {
+      expectedEchoRef.current = null;
+      pendingEditRef.current = null;
     }
     if (acceptedSignatureRef.current === signature) return;
     acceptedSignatureRef.current = signature;
     historyPastRef.current = [];
     historyFutureRef.current = [];
+    pendingEditRef.current = null;
+    refreshHistory();
     confirmationTokenRef.current += 1;
     setSelectedMarkId(null);
-  }, [value]);
+  }, [refreshHistory, value]);
 
   useEffect(() => {
     if (sourceRef.current === src) return;
     sourceRef.current = src;
     historyPastRef.current = [];
     historyFutureRef.current = [];
+    refreshHistory();
     expectedEchoRef.current = null;
+    pendingEditRef.current = null;
     acceptedSignatureRef.current = snapshotSignature(valueRef.current);
     confirmationTokenRef.current += 1;
     setSelectedMarkId(null);
-  }, [src]);
+  }, [refreshHistory, src]);
 
   useEffect(() => {
-    if (mode !== "delete") setSelectedMarkId(null);
-  }, [mode]);
+    if (activeMode !== "delete") setSelectedMarkId(null);
+  }, [activeMode]);
 
   useEffect(() => {
     if (selectedMarkId && !value?.marks.some((mark) => mark.id === selectedMarkId)) setSelectedMarkId(null);
@@ -170,8 +206,7 @@ export const WalkaroundMarker = forwardRef<WalkaroundMarkerHandle, WalkaroundMar
   }, []);
 
   const commitEdit = useCallback((next: WalkaroundData) => {
-    historyPastRef.current.push(valueRef.current);
-    historyFutureRef.current = [];
+    pendingEditRef.current = { previous: valueRef.current, signature: snapshotSignature(next) };
     emit(next);
   }, [emit]);
 
@@ -211,17 +246,25 @@ export const WalkaroundMarker = forwardRef<WalkaroundMarkerHandle, WalkaroundMar
     const previous = historyPastRef.current.pop()!;
     historyFutureRef.current.push(valueRef.current);
     const next = previous ?? emptySnapshot(valueRef.current, imageSize);
+    refreshHistory();
     if (next) emit(next);
     setSelectedMarkId(null);
-  }, [emit, imageSize]);
+  }, [emit, imageSize, refreshHistory]);
 
   const redo = useCallback(() => {
     if (!editableRef.current || historyFutureRef.current.length === 0) return;
     const next = historyFutureRef.current.pop()!;
     historyPastRef.current.push(valueRef.current);
+    refreshHistory();
     if (next !== null) emit(next);
     setSelectedMarkId(null);
-  }, [emit]);
+  }, [emit, refreshHistory]);
+
+  const selectMode = useCallback((nextMode: WalkaroundMode) => {
+    if (disabled) return;
+    if (!modeIsControlled) setUncontrolledMode(nextMode);
+    onModeChange?.(nextMode);
+  }, [disabled, modeIsControlled, onModeChange]);
 
   useImperativeHandle(ref, () => ({
     undo, redo, clear: requestClear,
@@ -293,7 +336,22 @@ export const WalkaroundMarker = forwardRef<WalkaroundMarkerHandle, WalkaroundMar
   }, [canDraw, commitEdit, imageSize, pointForEvent]);
 
   const error = imageIsCurrent ? loadError || incompatibleDimensions : null;
-  return <div className={className}>
+  return <div className={["walkaround-marker", className].filter(Boolean).join(" ")}>
+    {showToolbar && <div className="walkaround-marker__toolbar" role="toolbar" aria-label="Walkaround editing tools"
+      style={{ display: "flex", flexWrap: "wrap", gap: "var(--walkaround-marker-toolbar-gap, 8px)", marginBottom: "var(--walkaround-marker-toolbar-margin, 8px)" }}>
+      <button type="button" className="walkaround-marker__tool" aria-label="Draw marks" title="Draw marks"
+        aria-pressed={activeMode === "draw"} disabled={disabled || (modeIsControlled && !onModeChange)} onClick={() => selectMode("draw")}>Draw</button>
+      <button type="button" className="walkaround-marker__tool" aria-label="Remove marks" title="Remove marks"
+        aria-pressed={activeMode === "delete"} disabled={disabled || (modeIsControlled && !onModeChange)} onClick={() => selectMode("delete")}>Remove</button>
+      {showUndoRedo && <>
+        <button type="button" className="walkaround-marker__tool" aria-label="Undo last change" title="Undo last change"
+          disabled={!canModify || historyPastRef.current.length === 0} onClick={undo}>Undo</button>
+        <button type="button" className="walkaround-marker__tool" aria-label="Redo last change" title="Redo last change"
+          disabled={!canModify || historyFutureRef.current.length === 0} onClick={redo}>Redo</button>
+      </>}
+      {showClear && <button type="button" className="walkaround-marker__tool" aria-label="Clear all marks" title="Clear all marks"
+        disabled={!canModify || !(value?.marks.length)} onClick={requestClear}>Clear</button>}
+    </div>}
     <div style={{ position: "relative", width: "100%" }}>
       <img ref={imageRef} src={src} alt="Walkaround image" draggable={false}
         onLoad={(event) => {
