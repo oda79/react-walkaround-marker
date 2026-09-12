@@ -1,122 +1,42 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useState } from "react";
+import { WalkaroundMarker, parseWalkaround, serializeWalkaround, type WalkaroundData, type WalkaroundMode } from "@oda79/react-walkaround-marker";
+import vehicleImage from "./assets/hero.png";
+import "./App.css";
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+  const [value, setValue] = useState<WalkaroundData | null>(null);
+  const [mode, setMode] = useState<WalkaroundMode>("draw");
+  const [color, setColor] = useState("#ef4444");
+  const [strokeWidth, setStrokeWidth] = useState(10);
+  const [json, setJson] = useState("");
+  const [error, setError] = useState("");
+
+  const syncJson = (next: WalkaroundData) => {
+    setValue(next);
+    setJson(serializeWalkaround(next));
+  };
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
+    <main className="demo">
+      <header><h1>Walkaround marker</h1><p>Draw directly on the image; saved points remain in source-image coordinates.</p></header>
+      <section className="controls" aria-label="Drawing controls">
+        <label>Mode <select value={mode} onChange={(event) => setMode(event.target.value as WalkaroundMode)}><option value="draw">Draw</option><option value="view">View</option></select></label>
+        <label>Color <input type="color" value={color} onChange={(event) => setColor(event.target.value)} /></label>
+        <label>Width <input type="number" min="1" value={strokeWidth} onChange={(event) => setStrokeWidth(Number(event.target.value))} /> px</label>
+      </section>
+      <WalkaroundMarker src={vehicleImage} value={value} onChange={syncJson} mode={mode} color={color} strokeWidth={strokeWidth} />
+      <section className="json-panel">
+        <label htmlFor="walkaround-json">Current JSON</label>
+        <textarea id="walkaround-json" value={json} onChange={(event) => setJson(event.target.value)} rows={9} spellCheck={false} />
         <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
+          <button type="button" onClick={() => value && setJson(serializeWalkaround(value))}>Export current</button>
+          <button type="button" onClick={() => {
+            try { const restored = parseWalkaround(json); setValue(restored); setError(""); }
+            catch (caught) { setError(caught instanceof Error ? caught.message : "Could not restore JSON."); }
+          }}>Restore JSON</button>
         </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
+        {error && <p className="error" role="alert">{error}</p>}
       </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+    </main>
+  );
 }
-
-export default App
