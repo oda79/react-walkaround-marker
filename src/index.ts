@@ -1,5 +1,5 @@
 export { WalkaroundMarker } from "./WalkaroundMarker";
-export type { WalkaroundMarkerProps } from "./WalkaroundMarker";
+export type { WalkaroundMarkerHandle, WalkaroundMarkerProps } from "./WalkaroundMarker";
 export { parseWalkaround, serializeWalkaround } from "./serialization/schema";
 
 export type {
